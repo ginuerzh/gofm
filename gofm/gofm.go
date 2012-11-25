@@ -7,4 +7,5 @@ import (
 func main() {
 	doubanFM := gofm.NewFMPlayer("douban")
 	doubanFM.Play()
+	doubanFM.Control()
 }

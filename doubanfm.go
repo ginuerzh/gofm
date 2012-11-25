@@ -43,30 +43,33 @@ const (
 
 const (
 	// channel
-	CHAN_PRIVATE   = iota // 0 - 私人频道
-	CHAN_CHN              // 1 - 华语
-	CHAN_EU_US            // 2 - 欧美
-	CHAN_70               // 3 - 七零
-	CHAN_80               // 4 - 八零
-	CHAN_90               // 5 - 九零
-	CHAN_CANTONESE        // 6 - 粤语
-	CHAN_ROCK             // 7 - 摇滚
-	CHAN_FOLK             // 8 - 民谣
-	CHAN_LIGHT            // 9 - 轻音乐
-	CHAN_MOVIE            // 10 - 电影原声
-	_                     // 11 
-	_                     // 12
-	CHAN_JAZZ             // 13 - 爵士
-	CHAN_ELEC             // 14 - 电子
-	CHAN_RAP              // 15 - 说唱
-	CHAN_RB               // 16 - R&B
-	CHAN_JP               // 17 - 日语
-	CHAN_KOR              // 18 - 韩语
-	CHAN_PUMA             // 19 - Puma
-	CHAN_GIRL             // 20 - 女生
-	_                     // 21
-	CHAN_FR               // 22 - 法语
-	CHAN_MUSICIAN  = 26   // 26 - 豆瓣音乐人
+	CHAN_PRIVATE= iota + 1// 1 - 私人频道
+	CHAN_CHN              // 2 - 华语
+	CHAN_EU_US            // 3 - 欧美
+	CHAN_70               // 4 - 七零
+	CHAN_80               // 5 - 八零
+	CHAN_90               // 6 - 九零
+	CHAN_CANTONESE        // 7 - 粤语
+	CHAN_ROCK             // 8 - 摇滚
+	CHAN_FOLK             // 9 - 民谣
+	CHAN_LIGHT            // 10 - 轻音乐
+	CHAN_MOVIE            // 11 - 电影原声
+	_                     // 12 
+	_                     // 13
+	CHAN_JAZZ             // 14 - 爵士
+	CHAN_ELEC             // 15 - 电子
+	CHAN_RAP              // 16 - 说唱
+	CHAN_RB               // 17 - R&B
+	CHAN_JP               // 18 - 日语
+	CHAN_KOR              // 19 - 韩语
+	CHAN_PUMA             // 20 - Puma
+	CHAN_GIRL             // 21 - 女生
+	_                     // 22
+	CHAN_FR               // 23 - 法语
+	_					  // 24
+	_					  // 25
+	_					  // 26
+	CHAN_MUSICIAN         // 27 - 豆瓣音乐人
 )
 
 const (
@@ -79,8 +82,11 @@ var (
 	HOME         = os.Getenv("HOME")
 	USER         = os.Getenv("USER")
 	TmpDir       = os.TempDir()
-	songCacheDir = ".gofm/cache/song/"
-	picCacheDir  = ".gofm/cache/pic/"
+	gofmDir      = ".gofm/"
+	songCacheDir = gofmDir + "cache/song/"
+	picCacheDir  = gofmDir + "cache/pic/"
+	logDir       = gofmDir
+	LogFile	     = "log.txt"
 	client       = &http.Client{}
 )
 
@@ -97,6 +103,17 @@ func init() {
 		base = "/tmp"
 	}
 
+	logDir = base + "/" + logDir
+	if err := os.MkdirAll(logDir, os.ModePerm); err != nil {
+		log.Fatalln(err)
+	}
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	logF, err := os.Create(logDir + LogFile)
+	if err != nil {
+		log.Println(err)
+	}
+	log.SetOutput(logF)
+
 	songCacheDir = base + "/" + songCacheDir
 	picCacheDir = base + "/" + picCacheDir
 	if err := os.MkdirAll(songCacheDir, os.ModePerm); err != nil {
@@ -108,7 +125,6 @@ func init() {
 	}
 	log.Printf("picture cache: %s\n", picCacheDir)
 
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
 }
 
 type IntOrString interface{}
@@ -166,7 +182,7 @@ func (song *doubanSong) duration() time.Duration {
 
 	switch t := song.Length.(type) {
 	case int:
-		duration = time.Duration(t) 
+		duration = time.Duration(t)
 	case string:
 		if v, err := strconv.ParseFloat(t, 64); err != nil {
 			duration = time.Duration(0)
@@ -246,6 +262,8 @@ type doubanFM struct {
 	songs   []doubanSong
 	current *Song
 	chanSong chan *doubanSong
+	channelList ChannelList
+	currentChannel int
 }
 
 func NewDoubanFM() *doubanFM {
@@ -253,7 +271,7 @@ func NewDoubanFM() *doubanFM {
 	fm.songs = make([]doubanSong, 0, defaultCap)
 	fm.current = new(Song)
 	fm.chanSong = make(chan *doubanSong)
-
+	fm.makeChannel()
 	go func() {
 		for song := range fm.chanSong {
 			// check current song whether has been changed
@@ -261,12 +279,12 @@ func NewDoubanFM() *doubanFM {
 			if fm.current.Sid != sid {
 				continue
 			}
-			log.Printf("get song ID:%s, waiting... \n", song.Sid)
+			//log.Printf("get song ID:%s, waiting... \n", song.Sid)
 			if err := song.songResource(); err != nil {
 				log.Println(err)
 				continue
 			}
-			log.Printf("data has been ready.\n")
+			//log.Printf("data has been ready.\n")
 			// check again
 			if fm.current.Sid != sid {
 				continue
@@ -277,6 +295,44 @@ func NewDoubanFM() *doubanFM {
 	}()
 
 	return fm
+}
+
+func (dfm *doubanFM) makeChannel() {
+	dfm.channelList = ChannelList {
+		CHAN_PRIVATE: "私人频道",
+		CHAN_CHN: "华语",
+		CHAN_EU_US: "欧美",
+		CHAN_70: "七零",
+		CHAN_80: "八零",
+		CHAN_90: "九零",
+		CHAN_CANTONESE: "粤语",
+		CHAN_ROCK: "摇滚",
+		CHAN_FOLK: "民谣",
+		CHAN_LIGHT: "轻音乐",
+		CHAN_MOVIE: "电影原声",
+		CHAN_JAZZ: "爵士",
+		CHAN_ELEC: "电子",
+		CHAN_RAP: "说唱",
+		CHAN_RB: "R&B",
+		CHAN_JP: "日语",
+		CHAN_KOR: "韩语",
+		CHAN_PUMA: "Puma",
+		CHAN_GIRL: "女生",
+		CHAN_FR: "法语",
+		CHAN_MUSICIAN: "豆瓣音乐人",
+	}
+}
+
+// print specified channel name; if ch less than 0 print channel list.
+func (dfm *doubanFM) Channel(ch int) (ChannelList, bool) {
+	if ch == CHANNEL_CURRENT {
+		ch = dfm.currentChannel
+	}
+	value, ok := dfm.channelList[ch]
+	if ok {
+		return ChannelList{ch:value}, ok
+	}
+	return dfm.channelList, ok
 }
 
 func (dfm *doubanFM) Current() *Song {
@@ -305,6 +361,7 @@ func (dfm *doubanFM) Pre() {
 // change channel
 func (dfm *doubanFM) Tune(channel int) {
 	defer dfm.check()
+	//log.Printf("channel to %d\n", channel)
 	defaultParam.Type = NEW
 	defaultParam.Channel = channel
 	defaultParam.SongID = dfm.sid()
@@ -315,6 +372,8 @@ func (dfm *doubanFM) Tune(channel int) {
 		log.Println(err)
 		return
 	}
+	dfm.currentChannel = channel
+
 	dfm.addSong(false, songs...)
 	dfm.Current()
 	dfm.chanSong<- &dfm.songs[0]
@@ -339,7 +398,7 @@ func (dfm *doubanFM)Skip() {
 
 // report current is the last song, need more
 func (dfm *doubanFM) reportLast() {
-	log.Printf("report last song\n")
+	//log.Printf("report last song\n")
 	defer dfm.check()
 	defaultParam.Type = LAST
 	defaultParam.SongID = dfm.sid()
@@ -351,9 +410,6 @@ func (dfm *doubanFM) reportLast() {
 		return
 	}
 	dfm.addSong(true, songs...)
-}
-
-func (dfm *doubanFM) PlayStop() {
 }
 
 // rate current song, like or unlike
@@ -394,7 +450,7 @@ func (dfm *doubanFM) Trash() {
 
 // reporting current song is end
 func (dfm *doubanFM) Next() {
-	log.Printf("report song end\n")
+	//log.Printf("report song end\n")
 	defer dfm.check()
 	defaultParam.Type = END
 	defaultParam.SongID = dfm.sid()
@@ -410,7 +466,7 @@ func (dfm *doubanFM) Next() {
 }
 
 func (dfm *doubanFM) check() {
-	log.Printf("playlist remain songs: %d\n", len(dfm.songs))
+	//log.Printf("playlist remain songs: %d\n", len(dfm.songs))
 	dfm.Current()
 	if len(dfm.songs) == 0 { // there is no song
 		dfm.Tune(defaultParam.Channel)
@@ -444,7 +500,7 @@ func (dfm *doubanFM) sid() string {
 // get new playlist
 func (dfm *doubanFM) playList(p *paramList) ([]doubanSong, error) {
 	para := fmt.Sprintf("?type=%s&channel=%d&from=%s&pt=%d&sid=%s&r=%s",
-		p.Type, p.Channel, p.Source, int(p.PlayTime), p.SongID, RandomStr())
+		p.Type, p.Channel - 1, p.Source, int(p.PlayTime), p.SongID, RandomStr())
 	url := HostFM + PlaylistUri + para
 
 	log.Printf("url: %s\n", url)
@@ -460,12 +516,6 @@ func (dfm *doubanFM) playList(p *paramList) ([]doubanSong, error) {
 	if r.Result != 0 {
 		return nil, errors.New(r.Error)
 	}
-	//fmt.Printf("%s\n", string(data))
-	/*
-		for i, _ := range r.Songs {
-			fmt.Printf("%+v\n", r.Songs[i])
-		}
-	*/
 
 	return r.Songs, nil
 }
