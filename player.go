@@ -137,7 +137,7 @@ func (fmp *FMPlayer) Channel(ch int) (ChannelList, bool) {
 }
 
 func (fmp *FMPlayer) Play() {
-	fmp.Tune(CHAN_CHN)
+	fmp.Tune(CHANNEL_CHN)
 	go fmp.mainLoop.Run()
 }
 
@@ -220,7 +220,7 @@ func (fmp *FMPlayer) Control() {
 	for {
 		fmt.Print("gofm> ")
 		cmd, _ := reader.ReadString('\n')
-		cmd = strings.Trim(cmd, " \n")
+		cmd = strings.ToLower(strings.Trim(cmd, " \n"))
 
 		if len(cmd) == 0 {
 			continue
@@ -251,7 +251,6 @@ func (fmp *FMPlayer) Control() {
 		case 'l':
 			ch, _ := fmp.Channel(CHANNEL_CURRENT)
 			fmt.Println(ch)
-			fmt.Println("Current playing:")
 			fmt.Println(&fmp.current)
 		case 'h':
 			Help()

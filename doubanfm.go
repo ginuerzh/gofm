@@ -43,33 +43,33 @@ const (
 
 const (
 	// channel
-	CHAN_PRIVATE= iota + 1// 1 - 私人频道
-	CHAN_CHN              // 2 - 华语
-	CHAN_EU_US            // 3 - 欧美
-	CHAN_70               // 4 - 七零
-	CHAN_80               // 5 - 八零
-	CHAN_90               // 6 - 九零
-	CHAN_CANTONESE        // 7 - 粤语
-	CHAN_ROCK             // 8 - 摇滚
-	CHAN_FOLK             // 9 - 民谣
-	CHAN_LIGHT            // 10 - 轻音乐
-	CHAN_MOVIE            // 11 - 电影原声
+	CHANNEL_PRIVATE= iota + 1// 1 - 私人频道
+	CHANNEL_CHN              // 2 - 华语
+	CHANNEL_EU_US            // 3 - 欧美
+	CHANNEL_70               // 4 - 七零
+	CHANNEL_80               // 5 - 八零
+	CHANNEL_90               // 6 - 九零
+	CHANNEL_CANTONESE        // 7 - 粤语
+	CHANNEL_ROCK             // 8 - 摇滚
+	CHANNEL_FOLK             // 9 - 民谣
+	CHANNEL_LIGHT            // 10 - 轻音乐
+	CHANNEL_MOVIE            // 11 - 电影原声
 	_                     // 12 
 	_                     // 13
-	CHAN_JAZZ             // 14 - 爵士
-	CHAN_ELEC             // 15 - 电子
-	CHAN_RAP              // 16 - 说唱
-	CHAN_RB               // 17 - R&B
-	CHAN_JP               // 18 - 日语
-	CHAN_KOR              // 19 - 韩语
-	CHAN_PUMA             // 20 - Puma
-	CHAN_GIRL             // 21 - 女生
+	CHANNEL_JAZZ             // 14 - 爵士
+	CHANNEL_ELEC             // 15 - 电子
+	CHANNEL_RAP              // 16 - 说唱
+	CHANNEL_RB               // 17 - R&B
+	CHANNEL_JP               // 18 - 日语
+	CHANNEL_KOR              // 19 - 韩语
+	CHANNEL_PUMA             // 20 - Puma
+	CHANNEL_GIRL             // 21 - 女生
 	_                     // 22
-	CHAN_FR               // 23 - 法语
+	CHANNEL_FR               // 23 - 法语
 	_					  // 24
 	_					  // 25
 	_					  // 26
-	CHAN_MUSICIAN         // 27 - 豆瓣音乐人
+	CHANNEL_MUSICIAN         // 27 - 豆瓣音乐人
 )
 
 const (
@@ -253,7 +253,7 @@ type paramList struct {
 
 var defaultParam = &paramList{
 	Type:    NEW,
-	Channel: CHAN_CHN,
+	Channel: CHANNEL_CHN,
 	Source:  MainSite,
 	SongID:  "0",
 }
@@ -299,27 +299,27 @@ func NewDoubanFM() *doubanFM {
 
 func (dfm *doubanFM) makeChannel() {
 	dfm.channelList = ChannelList {
-		CHAN_PRIVATE: "私人频道",
-		CHAN_CHN: "华语",
-		CHAN_EU_US: "欧美",
-		CHAN_70: "七零",
-		CHAN_80: "八零",
-		CHAN_90: "九零",
-		CHAN_CANTONESE: "粤语",
-		CHAN_ROCK: "摇滚",
-		CHAN_FOLK: "民谣",
-		CHAN_LIGHT: "轻音乐",
-		CHAN_MOVIE: "电影原声",
-		CHAN_JAZZ: "爵士",
-		CHAN_ELEC: "电子",
-		CHAN_RAP: "说唱",
-		CHAN_RB: "R&B",
-		CHAN_JP: "日语",
-		CHAN_KOR: "韩语",
-		CHAN_PUMA: "Puma",
-		CHAN_GIRL: "女生",
-		CHAN_FR: "法语",
-		CHAN_MUSICIAN: "豆瓣音乐人",
+		CHANNEL_PRIVATE: "私人频道",
+		CHANNEL_CHN: "华语",
+		CHANNEL_EU_US: "欧美",
+		CHANNEL_70: "七零",
+		CHANNEL_80: "八零",
+		CHANNEL_90: "九零",
+		CHANNEL_CANTONESE: "粤语",
+		CHANNEL_ROCK: "摇滚",
+		CHANNEL_FOLK: "民谣",
+		CHANNEL_LIGHT: "轻音乐",
+		CHANNEL_MOVIE: "电影原声",
+		CHANNEL_JAZZ: "爵士",
+		CHANNEL_ELEC: "电子",
+		CHANNEL_RAP: "说唱",
+		CHANNEL_RB: "R&B",
+		CHANNEL_JP: "日语",
+		CHANNEL_KOR: "韩语",
+		CHANNEL_PUMA: "Puma",
+		CHANNEL_GIRL: "女生",
+		CHANNEL_FR: "法语",
+		CHANNEL_MUSICIAN: "豆瓣音乐人",
 	}
 }
 
