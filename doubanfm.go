@@ -83,8 +83,8 @@ var (
 	USER         = os.Getenv("USER")
 	TmpDir       = os.TempDir()
 	gofmDir      = ".gofm/"
-	songCacheDir = gofmDir + "cache/song/"
-	picCacheDir  = gofmDir + "cache/pic/"
+	songCacheDir = gofmDir + "cache/songs/"
+	picCacheDir  = gofmDir + "cache/pics/"
 	logDir       = gofmDir
 	LogFile	     = "log.txt"
 	client       = &http.Client{}
@@ -261,7 +261,6 @@ var defaultParam = &paramList{
 type doubanFM struct {
 	songs   []doubanSong
 	current *Song
-	chanSong chan *doubanSong
 	channelList ChannelList
 	currentChannel int
 }
@@ -270,29 +269,7 @@ func NewDoubanFM() *doubanFM {
 	fm := new(doubanFM)
 	fm.songs = make([]doubanSong, 0, defaultCap)
 	fm.current = new(Song)
-	fm.chanSong = make(chan *doubanSong)
 	fm.makeChannel()
-	go func() {
-		for song := range fm.chanSong {
-			// check current song whether has been changed
-			sid, _ := strconv.Atoi(song.Sid)
-			if fm.current.Sid != sid {
-				continue
-			}
-			//log.Printf("get song ID:%s, waiting... \n", song.Sid)
-			if err := song.songResource(); err != nil {
-				log.Println(err)
-				continue
-			}
-			//log.Printf("data has been ready.\n")
-			// check again
-			if fm.current.Sid != sid {
-				continue
-			}
-			// ok, now play
-			chanPlay<- *fm.current
-		}
-	}()
 
 	return fm
 }
@@ -348,7 +325,7 @@ func (dfm *doubanFM) Current() *Song {
 	dfm.current.Public = song.PublicTime
 	dfm.current.Duration = song.duration()
 	dfm.current.Like = song.like()
-	dfm.current.SongPath = song.songPath()
+	dfm.current.SongPath = song.Url
 	dfm.current.PicPath = song.picPath()
 
 	return dfm.current
@@ -375,8 +352,7 @@ func (dfm *doubanFM) Tune(channel int) {
 	dfm.currentChannel = channel
 
 	dfm.addSong(false, songs...)
-	dfm.Current()
-	dfm.chanSong<- &dfm.songs[0]
+	chanPlaylist<- *dfm.Current()
 }
 
 // skip to next song
@@ -392,8 +368,7 @@ func (dfm *doubanFM)Skip() {
 		return
 	}
 	dfm.addSong(false, songs...)
-	dfm.Current()
-	dfm.chanSong<- &dfm.songs[0]
+	chanPlaylist<- *dfm.Current()
 }
 
 // report current is the last song, need more
@@ -444,8 +419,7 @@ func (dfm *doubanFM) Trash() {
 		return
 	}
 	dfm.addSong(false, songs...)
-	dfm.Current()
-	dfm.chanSong<- &dfm.songs[0]
+	chanPlaylist<- *dfm.Current()
 }
 
 // reporting current song is end
@@ -461,13 +435,11 @@ func (dfm *doubanFM) Next() {
 		return
 	}
 	dfm.songs = dfm.songs[1:] // ok, next song
-	dfm.Current()
-	dfm.chanSong<- &dfm.songs[0]
+	chanPlaylist<- *dfm.Current()
 }
 
 func (dfm *doubanFM) check() {
 	//log.Printf("playlist remain songs: %d\n", len(dfm.songs))
-	dfm.Current()
 	if len(dfm.songs) == 0 { // there is no song
 		dfm.Tune(defaultParam.Channel)
 	} else if len(dfm.songs) == 1 { // current is the last song
@@ -503,7 +475,7 @@ func (dfm *doubanFM) playList(p *paramList) ([]doubanSong, error) {
 		p.Type, p.Channel - 1, p.Source, int(p.PlayTime), p.SongID, RandomStr())
 	url := HostFM + PlaylistUri + para
 
-	log.Printf("url: %s\n", url)
+	//log.Printf("url: %s\n", url)
 	data, err := Get(url)
 	if err != nil {
 		return nil, err
@@ -521,6 +493,7 @@ func (dfm *doubanFM) playList(p *paramList) ([]doubanSong, error) {
 }
 
 func Get(url string) ([]byte, error) {
+	log.Println("Get:", url)
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err

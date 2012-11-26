@@ -103,14 +103,14 @@ func (ch ChannelList) String() string {
 }
 
 var (
-	chanPlay chan Song
+	chanPlaylist chan Song
 	lastDuration time.Duration
 	pause bool
 	notify bool
 )
 
 func init() {
-	chanPlay = make(chan Song)
+	chanPlaylist = make(chan Song)
 	notify = true
 }
 
@@ -184,9 +184,14 @@ func (fmp *FMPlayer) Trash() {
 }
 
 func (fmp *FMPlayer) check() {
-	for song := range chanPlay {
+	for song := range chanPlaylist {
+		log.Println("Start playing new song:", song.Sid)
 		fmp.pipeline.SetState(gst.STATE_NULL)
-		fmp.pipeline.SetProperty("uri", "file://" + song.SongPath)
+		uri := song.SongPath
+		if !strings.HasPrefix(song.SongPath, "http://") {
+			uri = "file://" + song.SongPath
+		}
+		fmp.pipeline.SetProperty("uri", uri)
 		fmp.pipeline.SetState(gst.STATE_PLAYING)
 		fmp.current = song
 
@@ -217,6 +222,7 @@ func (fmp *FMPlayer) onMessageError(bus *gst.Bus, msg *gst.Message) {
 func (fmp *FMPlayer) Control() {
 	reader := bufio.NewReader(os.Stdin)
 
+	fmt.Println("Type h for help!")
 	for {
 		fmt.Print("gofm> ")
 		cmd, _ := reader.ReadString('\n')
@@ -274,10 +280,17 @@ var cmd = map[string]string {
 
 func Help() {
 	buffer := new(bytes.Buffer)
+	keys := make([]string, len(cmd))
+	i := 0
+	for k, _ := range cmd {
+		keys[i] = k
+		i++
+	}
+	sort.Strings(keys)
 
 	fmt.Println("Command list:")
-	for k, v := range cmd {
-		buffer.WriteString(fmt.Sprintf("%3s: %s\n", k, v))
+	for _, k := range keys{
+		buffer.WriteString(fmt.Sprintf("%3s: %s\n", k, cmd[k]))
 	}
 	fmt.Println(buffer)
 }
