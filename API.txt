@@ -1,0 +1,69 @@
+douban.fm API
+
+Host: douban.fm
+playlist uri: /j/mine/playlist
+
+e.g.
+ http://douban.fm/j/mine/playlist?type=n&sid=1382855&pt=11.7&channel=1&from=radio&r=411ef8fc02
+
+短报告：目前仅type=e使用，返回json数据: "ok"
+长报告：返回歌曲列表json数据，并更新当前的列表
+
+type:
+    	• b: bypass, 不再播放，长报告 (required: channel, sid)
+    	• e: end, 歌曲播放完毕，短报告 (required: channel, sid)
+    	• n: new, 返回新播放列表，长报告 (required: channel)
+    	• p: playing, 单首歌曲播放开始且播放列表已空时发送，长报告 (required: channel, sid)
+    	• s: skip, 下一首，长报告 (required: channel, sid)
+    	• u: unlike, 将sid的歌曲取消喜欢，长报告 (required: channel, sid)
+    	• r: rate, 红心标记，长报告 (required: channel, sid)
+sid:
+	Song ID
+pt:
+	past time (play time)
+channel:
+	0: 私人频道, 1: 华语, 2: 欧美, 3: 七零, 4: 八零, 5: 九零, 6: 粤语, 7: 摇滚, 8: 民谣,
+	9: 轻音乐, 10: 电影原声, 13: 爵士, 14: 电子, 15: 说唱, 16: R&B, 17: 日语, 18: 韩语,
+	19: Puma, 20: 女生, 22: 法语, 26: 豆瓣音乐人, 30: BMW
+from:
+	目前遇到两个值：radio(chrome plugin), mainsite(douban.fm)
+r:
+	random, 随机数 10位十六进制随机数 e.g. f01136feac
+
+返回json数据格式
+
+1. 歌曲列表
+
+{
+    "r": 0,
+    "song": [
+	{
+		"picture": "http://... .jpg",
+		"albumtitle": "...",
+		"adtype": 3
+		"company": "EMI",
+		"rating_avg": 4.34821,
+		"public_time": "2001",
+		"ssid": "ed88",
+		"album": "/subject/1404531/",
+		"like": 1,
+		"artist": "...",
+		"url": "http://... .mp3",
+		"title": "...",
+		"subtype": "...", (广告的值为"T", 其他的为"")
+		"length": 211, (持续时间)
+		"sid": "462880",
+		"aid": "1404531"
+	},
+	...
+    ]
+}
+
+2. type=e
+"ok"
+
+3. err
+{
+	"r": 1,
+	"err": "err msg"
+}
