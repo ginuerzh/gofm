@@ -3,7 +3,7 @@
 
 本应用依赖于: go1, glib-2.0, gstreamer-1.0
 
-Go binding for glib : github.com/ginuerzh/glib
-Go binding for gstreamer: github.com/ginuerzh/gst
+Go binding for glib : github.com/ziutek/glib
+Go binding for gstreamer: github.com/ziutek/gst
 
 
