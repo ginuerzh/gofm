@@ -43,6 +43,8 @@ func cmdLoop(p Player) {
 			p.Play()
 		case 'n':
 			p.Next()
+		case 's':
+			p.Skip()
 		case 'd':
 			p.Trash()
 		case 'r':
@@ -77,14 +79,15 @@ func cmdLoop(p Player) {
 func help() {
 	s := `Command list:
 	p: 	Pause or play
-	n: 	Next
-	d: 	Delete (never play)
+	n: 	Next, next song
+	s:	Skip, skip current playlist
+	d: 	Delete, never play
 	r: 	Like
 	u:	Unlike
 	c:	Current playing info
 	l: 	Playlist
 	0: 	Channel list
-	N:	Change to Channel N (N stands for channel number, see channel list)
+	N:	Change to Channel N, N stands for channel number, see channel list
 	h:	Show this help
 	q:	Quit
 `

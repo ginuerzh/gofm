@@ -23,13 +23,13 @@ import (
 
 const (
 	// type
-	OpBypass = "b" // 不再播放当前歌曲
+	OpBypass = "b" // 不再播放当前歌曲并刷新列表
 	OpEnd    = "e" // 歌曲播放完毕
-	OpNew    = "n" // 更改频道，返回新列表
+	OpNew    = "n" // 更改频道并刷新列表
 	OpLast   = "p" // 单首歌曲播放开始且播放列表已空，请求新列表
-	OpSkip   = "s" // 跳过当前歌曲
-	OpUnlike = "u" // 取消喜欢
-	OpLike   = "r" // 喜欢当前歌曲
+	OpSkip   = "s" // 跳过当前歌曲并刷新列表
+	OpUnlike = "u" // 取消喜欢并刷新列表
+	OpLike   = "r" // 喜欢当前歌曲并刷新列表
 )
 
 type channel struct {
@@ -153,6 +153,11 @@ func (p *doubanFM) cmdLoop() {
 			}
 			p.paused = !p.paused
 		case CmdNext:
+			p.gst.NewSource(p.next().Url)
+			if len(p.playlist) == 0 {
+				p.newPlaylist(OpLast)
+			}
+		case CmdSkip:
 			p.newPlaylist(OpSkip)
 			p.gst.NewSource(p.next().Url)
 		case CmdLike:

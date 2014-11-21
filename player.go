@@ -13,6 +13,7 @@ const (
 	CmdPause
 	CmdNext
 	CmdPrev
+	CmdSkip
 	CmdLike
 	CmdUnlike
 	CmdTrash
@@ -25,6 +26,7 @@ type Player interface {
 	Pause()
 	Next()
 	Prev()
+	Skip()
 
 	Like()
 	Unlike()
@@ -65,6 +67,10 @@ func (p *player) Next() {
 
 func (p *player) Prev() {
 	p.sendCmd(CmdPrev)
+}
+
+func (p *player) Skip() {
+	p.sendCmd(CmdSkip)
 }
 
 func (p *player) Like() {
