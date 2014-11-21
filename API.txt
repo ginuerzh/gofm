@@ -1,7 +1,10 @@
 douban.fm API
 
 Host: douban.fm
-playlist uri: /j/mine/playlist
+
+I. 歌曲列表
+
+GET /j/mine/playlist
 
 e.g.
  http://douban.fm/j/mine/playlist?type=n&sid=1382855&pt=11.7&channel=1&from=radio&r=411ef8fc02
@@ -30,9 +33,7 @@ from:
 r:
 	random, 随机数 10位十六进制随机数 e.g. f01136feac
 
-返回json数据格式
-
-1. 歌曲列表
+* 返回json数据格式
 
 {
     "r": 0,
@@ -46,10 +47,13 @@ r:
 		"public_time": "2001",
 		"ssid": "ed88",
 		"album": "/subject/1404531/",
+		"songlists_count": 201,
 		"like": 1,
 		"artist": "...",
 		"url": "http://... .mp3",
 		"title": "...",
+		"sha256": "",
+		"kbps": "64",
 		"subtype": "...", (广告的值为"T", 其他的为"")
 		"length": 211, (持续时间)
 		"sid": "462880",
@@ -59,11 +63,29 @@ r:
     ]
 }
 
-2. type=e
+* type=e
 "ok"
 
-3. err
+* err
 {
 	"r": 1,
 	"err": "err msg"
+}
+
+II. 频道列表
+
+GET	/j/app/radio/channels
+
+* 返回json数据格式
+{
+	"channels":[
+		{
+			"name_en": "Personal Radio",
+			"seq_id": 0,
+			"abbr_en": "",
+			"name": "私人兆赫",
+			"channel_id": 0, // int or string
+		},
+		...
+	]
 }

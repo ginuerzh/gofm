@@ -4,8 +4,10 @@ package main
 import (
 	"bytes"
 	//"container/list"
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/ziutek/gst"
 	"io"
 	"io/ioutil"
 	"log"
@@ -13,11 +15,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strconv"
-	//"strings"
-	"bufio"
-	"github.com/ziutek/gst"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -79,7 +79,12 @@ func (s song) String() string {
 	fmt.Fprintf(b, "%10s: %s\n", "Alum", s.AlbumTitle)
 	fmt.Fprintf(b, "%10s: %s\n", "Public", s.PubTime)
 	fmt.Fprintf(b, "%10s: %s\n", "Company", s.Company)
-	fmt.Fprintf(b, "%10s: %s\n", "Url", s.Album)
+	album := s.Album
+	if !strings.HasPrefix(album, "http") {
+		album = "http://www.douban.com" + album
+	}
+	fmt.Fprintf(b, "%10s: %s\n", "Url", album)
+	fmt.Fprintf(b, "%10s: %d\n", "Kbps", s.Kbps)
 	fmt.Fprintf(b, "%10s: %f\n", "Rate", s.RatingAvg)
 	fmt.Fprintf(b, "%10s: %d\n", "Like", s.Like)
 
@@ -234,8 +239,7 @@ func (p *doubanFM) newPlaylist(op string) int {
 }
 
 func (p *doubanFM) get(url string) ([]byte, error) {
-	fmt.Println(url)
-
+	//fmt.Println(url)
 	r, err := p.request("GET", url, nil)
 	if err != nil {
 		return nil, err
