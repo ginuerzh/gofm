@@ -12,32 +12,19 @@ Go binding for glib: [github.com/ziutek/glib](http://github.com/ziutek/glib)
 Go binding for gstreamer: [github.com/ziutek/gst](http://github.com/ziutek/gst)
 
 ####命令用法：
-
-> gofm> h
-
->   Command list:
-
->	    p: 	Pause or play
-
->	    n: 	Next, next song
-
->	    s:	Skip, skip current playlist
-
->	    d: 	Delete, never play
-
->	    r: 	Like
-
->	    u:	Unlike
-
->	    c:	Current playing info
-
->	    l: 	Playlist
-
->	    0: 	Channel list
-
->	    N:	Change to Channel N, N stands for channel number, see channel list
-
->	    h:	Show this help
-
->	    q:	Quit
-
+```
+gofm> h
+Command list:
+	p: 	Pause or play
+	n: 	Next, next song
+	s:	Skip, skip current playlist
+	d: 	Delete, never play
+	r: 	Like
+	u:	Unlike
+	c:	Current playing info
+	l: 	Playlist
+	0: 	Channel list
+	N:	Change to Channel N, N stands for channel number, see channel list
+	h:	Show this help
+	q:	Quit
+```
