@@ -169,8 +169,8 @@ func (p *doubanFM) onMessage(bus *gst.Bus, msg *gst.Message) {
 			p.newPlaylist(OpLast)
 		}
 	case gst.MESSAGE_ERROR:
-		//s, param := msg.GetStructure()
-		//log.Println("gst error", msg.GetType(), s, param)
+		s, param := msg.GetStructure()
+		log.Println("gst error", msg.GetType(), s, param)
 		p.gst.Stop()
 		//err, debug := msg.ParseError()
 		//log.Printf("Error: %s (debug: %s) from %s\n", err, debug, msg.GetSrc().GetName())
@@ -369,25 +369,30 @@ func (_ *doubanFM) request(method, url string, bodyType string, body io.Reader) 
 	}
 	r.Header.Set("Content-Type", bodyType)
 	r.AddCookie(&http.Cookie{Name: "bid", Value: "8UK9DSCWDws"})
-	if addr, err := net.ResolveTCPAddr("tcp", os.Getenv("http_proxy")); err == nil {
-		conn, err := net.DialTCP("tcp", nil, addr)
-		if err != nil {
-			return nil, err
-		}
-		defer conn.Close()
-
-		if err := r.WriteProxy(conn); err != nil {
-			return nil, err
-		}
-
-		data, err := ioutil.ReadAll(conn)
-		if err != nil {
-			return nil, err
-		}
-		return http.ReadResponse(bufio.NewReader(bytes.NewBuffer(data)), r)
+	proxy := os.Getenv("http_proxy")
+	if len(proxy) == 0 {
+		return http.DefaultClient.Do(r)
 	}
 
-	return http.DefaultClient.Do(r)
+	addr, err := net.ResolveTCPAddr("tcp", proxy)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := net.DialTCP("tcp", nil, addr)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	if err := r.WriteProxy(conn); err != nil {
+		return nil, err
+	}
+
+	data, err := ioutil.ReadAll(conn)
+	if err != nil {
+		return nil, err
+	}
+	return http.ReadResponse(bufio.NewReader(bytes.NewBuffer(data)), r)
 }
 
 func (fm *doubanFM) Current() string {

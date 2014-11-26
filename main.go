@@ -3,7 +3,7 @@ package main
 
 import (
 	//"flag"
-	//"log"
+	"log"
 	//"os"
 	"bufio"
 	"fmt"
@@ -11,6 +11,10 @@ import (
 	"strconv"
 	"strings"
 )
+
+func init() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+}
 
 func main() {
 	p := New("douban")
