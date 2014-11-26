@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/ziutek/gst"
+	"image/jpeg"
 	"io"
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
@@ -31,6 +33,15 @@ const (
 	OpUnlike = "u" // 取消喜欢并刷新列表
 	OpLike   = "r" // 喜欢当前歌曲并刷新列表
 )
+
+const (
+	appName     = "radio_desktop_win"
+	captchaFile = "captcha.jpg"
+)
+
+func init() {
+	rand.Seed(int64(time.Now().Nanosecond()))
+}
 
 type channel struct {
 	Id     interface{} `json:"channel_id"`
@@ -91,14 +102,42 @@ func (s song) String() string {
 	return b.String()
 }
 
+/*
+type userinfo struct {
+	CK     string
+	Id     string
+	DJ     bool `json:"is_dj"`
+	Pro    bool `json:"is_pro"`
+	Name   string
+	Record struct {
+		Banned   int
+		FavChans int `json:"fav_chls_count"`
+		Liked    int
+		Played   int
+	} `json:"play_record"`
+	Uid string
+	Url string
+}
+*/
+
+type userinfo struct {
+	Id     string `json:"user_id"`
+	Name   string `json:"user_name"`
+	Email  string
+	Token  string
+	Expire string
+}
+
 type doubanFM struct {
 	player
 	gst      *gstreamer
 	channels []channel // channel list
 	channel  int       // current channel
 	paused   bool      // play status
+	loop     bool
 	playlist []song
 	playing  song // current playing
+	user     userinfo
 }
 
 func NewDouban() Player {
@@ -120,8 +159,12 @@ func NewDouban() Player {
 func (p *doubanFM) onMessage(bus *gst.Bus, msg *gst.Message) {
 	switch msg.GetType() {
 	case gst.MESSAGE_EOS:
-		p.newPlaylist(OpEnd)
-		p.gst.NewSource(p.next().Url)
+		if p.loop {
+			p.gst.NewSource(p.playing.Url)
+		} else {
+			p.newPlaylist(OpEnd)
+			p.gst.NewSource(p.next().Url)
+		}
 		if len(p.playlist) == 0 {
 			p.newPlaylist(OpLast)
 		}
@@ -157,13 +200,17 @@ func (p *doubanFM) cmdLoop() {
 			if len(p.playlist) == 0 {
 				p.newPlaylist(OpLast)
 			}
+		case CmdLoop:
+			p.loop = !p.loop
 		case CmdSkip:
 			p.newPlaylist(OpSkip)
 			p.gst.NewSource(p.next().Url)
 		case CmdLike:
 			p.newPlaylist(OpLike)
+			p.playing.Like = 1
 		case CmdUnlike:
 			p.newPlaylist(OpUnlike)
+			p.playing.Like = 0
 		case CmdTrash:
 			p.newPlaylist(OpBypass)
 			p.gst.NewSource(p.next().Url)
@@ -187,16 +234,17 @@ func (p *doubanFM) next() song {
 }
 
 func (p *doubanFM) getChannels() int {
-	data, err := p.get("http://douban.fm/j/app/radio/channels")
+	resp, err := p.get("http://www.douban.com/j/app/radio/channels")
 	if err != nil {
 		log.Println(err)
 		return 0
 	}
+
 	var r struct {
 		Channels []channel `json:"channels"`
 	}
 
-	if err := json.Unmarshal(data, &r); err != nil {
+	if err := json.NewDecoder(resp).Decode(&r); err != nil {
 		log.Println(err)
 	}
 
@@ -207,19 +255,63 @@ func (p *doubanFM) getChannels() int {
 	return len(r.Channels)
 }
 
+func (p *doubanFM) getLoginChls() {
+	resp, err := p.get("http://douban.fm/j/explore/get_login_chls?uk=" + p.user.Id)
+	if err != nil {
+		return
+	}
+	var r struct {
+		Data struct {
+			Res struct {
+				Favs []struct {
+					Intro string
+					Name  string
+					Id    int
+					Hot   []string `json:"hot_songs"`
+				} `json:"fav_chls"`
+				Recommends []struct {
+					Intro string
+					Name  string
+					Id    int
+					Hot   []string `json:"hot_songs"`
+				} `json:"rec_chls"`
+			}
+		}
+	}
+
+	if err := json.NewDecoder(resp).Decode(&r); err != nil {
+		return
+	}
+
+	for _, fav := range r.Data.Res.Favs {
+		p.channels = append(p.channels,
+			channel{Id: fav.Id, Name: fav.Name, Intro: fav.Intro})
+	}
+	for _, rec := range r.Data.Res.Recommends {
+		p.channels = append(p.channels,
+			channel{Id: rec.Id, Name: rec.Name, Intro: rec.Intro})
+	}
+
+}
+
 func (p *doubanFM) newPlaylist(op string) int {
 	v := url.Values{}
+	v.Add("app_name", appName)
+	v.Add("version", "100")
+	v.Add("token", p.user.Token)
+	v.Add("expire", p.user.Expire)
+	v.Add("user_id", p.user.Id)
+	v.Add("kbps", "192")
 	v.Add("type", op)
 	v.Add("channel", p.channels[p.channel-1].ChannelId())
-	v.Add("from", "mainsite")
-	v.Add("pt", strconv.Itoa(p.playing.Length))
 	v.Add("sid", p.playing.Sid)
+	//v.Add("from", "mainsite")
+	//v.Add("pt", strconv.Itoa(p.playing.Length))
+	//ra := rand.Int63()%0xF000000000 + 0x1000000000
+	//v.Add("r", fmt.Sprintf("%x", ra))
+	v.Add("preventCache", strconv.FormatFloat(rand.Float64(), 'f', 16, 64))
 
-	rand.Seed(int64(time.Now().Nanosecond()))
-	ra := rand.Int63()%0xF000000000 + 0x1000000000
-	v.Add("r", fmt.Sprintf("%x", ra))
-
-	data, err := p.get("http://douban.fm/j/mine/playlist?" + v.Encode())
+	resp, err := p.get("http://www.douban.com/j/app/radio/people?" + v.Encode())
 	if err != nil {
 		log.Println(err)
 		return 0
@@ -232,7 +324,7 @@ func (p *doubanFM) newPlaylist(op string) int {
 		Err        string
 	}
 
-	if err := json.Unmarshal(data, &r); err != nil {
+	if err := json.NewDecoder(resp).Decode(&r); err != nil {
 		log.Println(err)
 	}
 
@@ -243,22 +335,39 @@ func (p *doubanFM) newPlaylist(op string) int {
 	return len(r.Song)
 }
 
-func (p *doubanFM) get(url string) ([]byte, error) {
+func (fm *doubanFM) get(url string) (io.Reader, error) {
 	//fmt.Println(url)
-	r, err := p.request("GET", url, nil)
+	r, err := fm.request("GET", url, "", nil)
 	if err != nil {
 		return nil, err
 	}
 	defer r.Body.Close()
 
-	return ioutil.ReadAll(r.Body)
+	b := &bytes.Buffer{}
+	_, err = io.Copy(b, r.Body)
+
+	return b, err
 }
 
-func (p *doubanFM) request(method, url string, body io.Reader) (*http.Response, error) {
+func (fm *doubanFM) post(url, bodyType string, body io.Reader) (io.Reader, error) {
+	r, err := fm.request("POST", url, bodyType, body)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Body.Close()
+
+	b := &bytes.Buffer{}
+	_, err = io.Copy(b, r.Body)
+
+	return b, err
+}
+
+func (_ *doubanFM) request(method, url string, bodyType string, body io.Reader) (*http.Response, error) {
 	r, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return nil, err
 	}
+	r.Header.Set("Content-Type", bodyType)
 	r.AddCookie(&http.Cookie{Name: "bid", Value: "8UK9DSCWDws"})
 	if addr, err := net.ResolveTCPAddr("tcp", os.Getenv("http_proxy")); err == nil {
 		conn, err := net.DialTCP("tcp", nil, addr)
@@ -302,7 +411,132 @@ func (fm *doubanFM) Playlist() string {
 func (fm *doubanFM) Channels() string {
 	buffer := &bytes.Buffer{}
 	for i, ch := range fm.channels {
-		fmt.Fprintf(buffer, "%2d - %s %s\n", i+1, ch.Name, ch.Intro)
+		if i+1 == fm.channel {
+			fmt.Fprintf(buffer, "%2d + %s %s\n", i+1, ch.Name, ch.Intro)
+		} else {
+			fmt.Fprintf(buffer, "%2d - %s %s\n", i+1, ch.Name, ch.Intro)
+		}
 	}
 	return buffer.String()
+}
+
+func (fm *doubanFM) userInfo() string {
+	return fmt.Sprintf("%s \t%s", fm.user.Id, fm.user.Name)
+}
+
+func (fm *doubanFM) Login() {
+	var id, pwd string
+
+	if len(fm.user.Id) > 0 {
+		fmt.Println(fm.userInfo())
+		return
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Print("Douban ID: ")
+		id, _ = reader.ReadString('\n')
+		id = strings.Trim(id, " \t\n")
+		if len(id) > 0 {
+			break
+		}
+	}
+
+	for {
+		fmt.Print("Password: ")
+		pwd, _ = reader.ReadString('\n')
+		pwd = strings.TrimRight(pwd, "\n")
+		if len(pwd) > 0 {
+			break
+		}
+	}
+
+	/*
+		cid, err := fm.newCaptcha()
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		dir, _ := os.Getwd()
+		fmt.Println("Captcha image saved at", dir+"/"+captchaFile)
+		for {
+			fmt.Print("Captcha: ")
+			captcha, _ = reader.ReadString('\n')
+			captcha = strings.Trim(captcha, " \t\n")
+			if len(captcha) > 0 {
+				break
+			}
+		}
+	*/
+
+	fm.login(id, pwd)
+
+	if len(fm.user.Id) > 0 {
+		channels := []channel{
+			{Id: -3, Name: "红星兆赫", Intro: ""},
+		}
+		channels = append(channels, fm.channels...)
+		fm.channels = channels
+
+		fm.getLoginChls()
+	}
+}
+
+func (fm *doubanFM) login(id, password string) {
+	log.Println(id, password)
+	formdata := &bytes.Buffer{}
+
+	w := multipart.NewWriter(formdata)
+	w.WriteField("app_name", "radio_desktop_win")
+	w.WriteField("version", "100")
+	w.WriteField("email", id)
+	w.WriteField("password", password)
+	defer w.Close()
+
+	resp, err := fm.post("http://www.douban.com/j/app/login",
+		w.FormDataContentType(), formdata)
+	if err != nil {
+		return
+	}
+	if err = json.NewDecoder(resp).Decode(&fm.user); err != nil {
+		return
+	}
+}
+
+func (fm *doubanFM) newCaptcha() (id string, err error) {
+	r, err := fm.get("http://douban.fm/j/new_captcha")
+	if err != nil {
+		return
+	}
+
+	err = json.NewDecoder(r).Decode(&id)
+	if err != nil {
+		return
+	}
+
+	v := url.Values{}
+	v.Add("size", "m")
+	v.Add("id", id)
+	r, err = fm.get("http://douban.fm/misc/captcha?" + v.Encode())
+	if err != nil {
+		return
+	}
+
+	captcha, err := jpeg.Decode(r)
+	if err != nil {
+		return
+	}
+
+	file, err := os.Create(captchaFile)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	if err = jpeg.Encode(file, captcha, nil); err != nil {
+		return
+	}
+
+	return
 }

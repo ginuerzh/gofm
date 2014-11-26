@@ -89,3 +89,86 @@ GET	/j/app/radio/channels
 		...
 	]
 }
+
+III. 登录
+
+1. 获取captcha id
+GET /j/new_captcha
+
+* 返回数据
+"uyr9x8XRok8qyJYys1cNGXNB:en"
+
+2. 获取captcha图片
+GET /misc/captcha?size=m&id=uyr9x8XRok8qyJYys1cNGXNB:en
+
+3. 登录
+POST	/j/login
+
+请求参数(application/x-www-form-urlencoded)
+source=radio
+alias=ginuerzh@gmail.com
+form_password=***
+captcha_solution=broken
+captcha_id=uyr9x8XRok8qyJYys1cNGXNB:en
+task=sync_channel_list
+
+* 返回json数据格式
+{
+	"r": 0,
+	"user_info":{
+		"ck": "COHi",
+		"id": "35586494",
+		"is_dj": false,
+		"is_new_user": 0,
+		"is_pro": false,
+		"name": "Gerry",
+		"play_record":{
+			"banned": 10,
+			"fav_chls_count": 5,
+			"liked": 305,
+			"played": 3660
+		},
+		"third_party_info": null,
+		"uid": "ginuerzh",
+		"url": "http://www.douban.com/people/ginuerzh/"
+	}
+}
+
+4. 获取个人频道
+GET /j/explore/get_login_chls?uk=35586494
+
+* 返回json数据格式
+{
+	"data":{
+		"res":{
+			"fav_chls":[
+				{
+					"song_to_start":"",
+					"intro":"为你推荐 李健 以及相似的艺术家",
+					"name":"李健 系",
+					"song_num":0,
+					"creator":{
+						"url":"http://site.douban.com/douban.fm/",
+						"name":"豆瓣FM",
+						"id":1
+					},
+					"collected": "false",
+					"banner": "http://XXX.jpg",
+					"cover": "http://XXX.jpg",
+					"id": 28250,
+					"hot_songs":["窗台","青春再见","温暖"]
+				},
+				...
+			],
+			"rec_chls":[
+				{
+					"song_to_start":"".
+					"intro":"",
+					"name":"",
+					...
+				},
+				...
+			]
+		}
+	}
+}

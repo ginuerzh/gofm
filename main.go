@@ -43,9 +43,13 @@ func cmdLoop(p Player) {
 			p.Play()
 		case 'n':
 			p.Next()
+		case 'b':
+			p.Prev()
+		case 'x':
+			p.Loop()
 		case 's':
 			p.Skip()
-		case 'd':
+		case 't':
 			p.Trash()
 		case 'r':
 			p.Like()
@@ -55,6 +59,8 @@ func cmdLoop(p Player) {
 			fmt.Println(p.Current())
 		case 'l': // play list
 			fmt.Println(p.Playlist())
+		case 'z':
+			p.Login()
 		case 'q':
 			fmt.Println("Bye!")
 			os.Exit(0)
@@ -80,14 +86,17 @@ func help() {
 	s := `Command list:
 	p: 	Pause or play
 	n: 	Next, next song
+	b:	Prev, previous song
+	x:	Loop, loop playback
 	s:	Skip, skip current playlist
-	d: 	Delete, never play
+	t: 	Trash, never play
 	r: 	Like
 	u:	Unlike
 	c:	Current playing info
 	l: 	Playlist
 	0: 	Channel list
 	N:	Change to Channel N, N stands for channel number, see channel list
+	z:	Login, Account login
 	h:	Show this help
 	q:	Quit
 `

@@ -10,6 +10,7 @@ const (
 	CmdChannel = 100 + iota // 0 - 100 channel number
 	CmdStop
 	CmdPlay
+	CmdLoop
 	CmdPause
 	CmdNext
 	CmdPrev
@@ -18,6 +19,7 @@ const (
 	CmdUnlike
 	CmdTrash
 	CmdTune
+	CmdLogin
 )
 
 type Player interface {
@@ -26,16 +28,24 @@ type Player interface {
 	Pause()
 	Next()
 	Prev()
-	Skip()
+	Loop()
 
+	Skip()
 	Like()
 	Unlike()
 	Trash()
-	Tune(ch int)
+
+	Tuner
 
 	Channels() string
 	Playlist() string
 	Current() string
+
+	Login()
+}
+
+type Tuner interface {
+	Tune(ch int)
 }
 
 type player struct {
@@ -69,6 +79,10 @@ func (p *player) Prev() {
 	p.sendCmd(CmdPrev)
 }
 
+func (p *player) Loop() {
+	p.sendCmd(CmdLoop)
+}
+
 func (p *player) Skip() {
 	p.sendCmd(CmdSkip)
 }
@@ -99,6 +113,10 @@ func (p *player) Channels() string {
 
 func (p *player) Current() string {
 	return ""
+}
+
+func (p *player) Login() {
+	p.sendCmd(CmdLogin)
 }
 
 type gstreamer struct {
