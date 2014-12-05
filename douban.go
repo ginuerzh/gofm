@@ -87,7 +87,7 @@ func (s song) String() string {
 	b := new(bytes.Buffer)
 	fmt.Fprintf(b, "%10s: %s\n", "Title", s.Title)
 	fmt.Fprintf(b, "%10s: %s\n", "Artist", s.Artist)
-	fmt.Fprintf(b, "%10s: %s\n", "Alum", s.AlbumTitle)
+	fmt.Fprintf(b, "%10s: %s\n", "Album", s.AlbumTitle)
 	fmt.Fprintf(b, "%10s: %s\n", "Public", s.PubTime)
 	fmt.Fprintf(b, "%10s: %s\n", "Company", s.Company)
 	album := s.Album
@@ -220,6 +220,14 @@ func (p *doubanFM) cmdLoop() {
 				p.newPlaylist(OpNew)
 				p.gst.NewSource(p.next().Url)
 			}
+		}
+
+		for {
+			if len(p.playlist) == 0 {
+				p.newPlaylist(OpLast)
+				continue
+			}
+			break
 		}
 	}
 }
@@ -403,7 +411,7 @@ func (fm *doubanFM) Playlist() string {
 	buffer := &bytes.Buffer{}
 
 	if len(fm.playing.Sid) > 0 {
-		fmt.Fprintf(buffer, "%s - %s (%s)\n",
+		fmt.Fprintf(buffer, "%s + %s (%s)\n",
 			fm.playing.Title, fm.playing.Artist, fm.playing.PubTime)
 	}
 	for _, song := range fm.playlist {
