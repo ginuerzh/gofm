@@ -1,456 +1,321 @@
-// douban
 package main
 
 import (
-	"bytes"
-	//"container/list"
 	"bufio"
-	"encoding/json"
+	"bytes"
 	"fmt"
+	"github.com/ginuerzh/doubanfm"
+	"github.com/ziutek/glib"
 	"github.com/ziutek/gst"
-	"image/jpeg"
-	"io"
-	"io/ioutil"
 	"log"
-	"math/rand"
-	"mime/multipart"
-	"net"
-	"net/http"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 )
 
 const (
-	// type
-	OpBypass = "b" // 不再播放当前歌曲并刷新列表
-	OpEnd    = "e" // 歌曲播放完毕
-	OpNew    = "n" // 更改频道并刷新列表
-	OpLast   = "p" // 单首歌曲播放开始且播放列表已空，请求新列表
-	OpSkip   = "s" // 跳过当前歌曲并刷新列表
-	OpUnlike = "u" // 取消喜欢并刷新列表
-	OpLike   = "r" // 喜欢当前歌曲并刷新列表
+	OpPlay   = "p"
+	OpLoop   = "x"
+	OpNext   = "n"
+	OpSkip   = "s"
+	OpTrash  = "t"
+	OpLike   = "r"
+	OpUnlike = "u"
+	OpList   = "l"
+	OpSong   = "c"
+	OpLogin  = "z"
+	OpHelp   = "h"
+	OpExit   = "q"
 )
 
-const (
-	appName     = "radio_desktop_win"
-	captchaFile = "captcha.jpg"
-)
-
-func init() {
-	rand.Seed(int64(time.Now().Nanosecond()))
+type Channel struct {
+	Id   string
+	Name string
+	Fav  bool
 }
 
-type channel struct {
-	Id     interface{} `json:"channel_id"`
-	Name   string
-	Intro  string
-	NameEn string `json:"name_en"`
-	AbbrEn string `json:"abbr_en"`
-	Seq    int    `json:"seq_id"`
+func (c Channel) String() string {
+	return c.Id + " - " + c.Name
 }
 
-func (ch *channel) ChannelId() string {
-	switch v := ch.Id.(type) {
-	case int:
-		return strconv.Itoa(v)
-	case string:
-		return v
-	}
-	return "0"
-}
-
-type song struct {
-	Album      string
-	Picture    string
-	Ssid       string
-	Artist     string
-	Url        string
-	Company    string
-	Title      string
-	RatingAvg  float64 `json:"rating_avg"`
-	Length     int
-	SubType    string
-	PubTime    string `json:"public_time"`
-	SongList   int    `json:"songlists_count"`
+type Song struct {
 	Sid        string
-	Aid        string
-	Sha256     string
-	Kbps       int `json:",string"`
+	Artist     string
+	Title      string
+	Album      string
 	AlbumTitle string
+	PubTime    string
+	Company    string
+	Length     int
+	Kbps       string
+	Url        string
 	Like       int
 }
 
-func (s song) String() string {
+func (s Song) String() string {
 	b := new(bytes.Buffer)
-	fmt.Fprintf(b, "%10s: %s\n", "Title", s.Title)
-	fmt.Fprintf(b, "%10s: %s\n", "Artist", s.Artist)
-	fmt.Fprintf(b, "%10s: %s\n", "Album", s.AlbumTitle)
-	fmt.Fprintf(b, "%10s: %s\n", "Public", s.PubTime)
-	fmt.Fprintf(b, "%10s: %s\n", "Company", s.Company)
+	fmt.Fprintf(b, "%7s: %s\n", "Title", s.Title)
+	fmt.Fprintf(b, "%7s: %s\n", "Artist", s.Artist)
+	fmt.Fprintf(b, "%7s: %s\n", "Album", s.AlbumTitle)
 	album := s.Album
 	if !strings.HasPrefix(album, "http") {
 		album = "http://www.douban.com" + album
 	}
-	fmt.Fprintf(b, "%10s: %s\n", "Url", album)
-	fmt.Fprintf(b, "%10s: %d\n", "Kbps", s.Kbps)
-	fmt.Fprintf(b, "%10s: %f\n", "Rate", s.RatingAvg)
-	fmt.Fprintf(b, "%10s: %d\n", "Like", s.Like)
+	fmt.Fprintf(b, "%7s: %s\n", "Url", album)
+	fmt.Fprintf(b, "%7s: %s\n", "Company", s.Company)
+	fmt.Fprintf(b, "%7s: %s\n", "Public", s.PubTime)
+	fmt.Fprintf(b, "%7s: %s\n", "Kbps", s.Kbps)
+	fmt.Fprintf(b, "%7s: %d\n", "Like", s.Like)
 
 	return b.String()
 }
 
-/*
-type userinfo struct {
-	CK     string
-	Id     string
-	DJ     bool `json:"is_dj"`
-	Pro    bool `json:"is_pro"`
-	Name   string
-	Record struct {
-		Banned   int
-		FavChans int `json:"fav_chls_count"`
-		Liked    int
-		Played   int
-	} `json:"play_record"`
-	Uid string
-	Url string
-}
-*/
-
-type userinfo struct {
-	Id     string `json:"user_id"`
-	Name   string `json:"user_name"`
-	Email  string
-	Token  string
-	Expire string
-}
-
-type doubanFM struct {
-	player
+type DoubanFM struct {
+	Channels []Channel // channel list
+	Songs    []Song    // playlist
+	Song     Song      // current song
+	Channel  int       // current channel
+	Paused   bool      // play/pause status
+	Loop     bool
+	User     *doubanfm.User // login user
+	opChan   chan string
 	gst      *gstreamer
-	channels []channel // channel list
-	channel  int       // current channel
-	paused   bool      // play status
-	loop     bool
-	playlist []song
-	playing  song // current playing
-	user     userinfo
 }
 
-func NewDouban() Player {
-	p := &doubanFM{
-		paused:  true,
-		channel: 2,
-		gst:     NewGstreamer(),
+func NewDoubanFM() *DoubanFM {
+	return &DoubanFM{
+		opChan: make(chan string, 1),
+		gst:    newGstreamer(),
 	}
-	p.channels = []channel{
-		{Id: 0, Name: "私人频道", Intro: ""},
-	}
-	p.cmdChan = make(chan int, 1)
-	p.gst.init(p.onMessage)
-	go p.cmdLoop()
-
-	return p
 }
 
-func (p *doubanFM) onMessage(bus *gst.Bus, msg *gst.Message) {
+func (db *DoubanFM) Exec(op string) {
+	select {
+	case db.opChan <- op:
+	default:
+	}
+}
+
+func (db *DoubanFM) Empty() bool {
+	return len(db.Songs) == 0
+}
+
+func (db *DoubanFM) Next() (song Song) {
+	if db.Empty() {
+		return
+	}
+	db.Song = db.Songs[0]
+	db.Songs = db.Songs[1:]
+	return db.Song
+}
+
+func (db *DoubanFM) onMessage(bus *gst.Bus, msg *gst.Message) {
 	switch msg.GetType() {
 	case gst.MESSAGE_EOS:
-		if p.loop {
-			p.gst.NewSource(p.playing.Url)
+		if db.Loop {
+			db.gst.NewSource(db.Song.Url)
 		} else {
-			p.newPlaylist(OpEnd)
-			p.gst.NewSource(p.next().Url)
-		}
-		if len(p.playlist) == 0 {
-			p.newPlaylist(OpLast)
+			db.GetSongs(doubanfm.End)
+			if db.Empty() {
+				db.GetSongs(doubanfm.Last)
+			}
+			db.gst.NewSource(db.Next().Url)
 		}
 	case gst.MESSAGE_ERROR:
 		s, param := msg.GetStructure()
 		log.Println("gst error", msg.GetType(), s, param)
-		p.gst.Stop()
-		//err, debug := msg.ParseError()
-		//log.Printf("Error: %s (debug: %s) from %s\n", err, debug, msg.GetSrc().GetName())
-		//p.mainloop.Quit()
+		db.gst.Stop()
 	}
 }
 
-func (p *doubanFM) cmdLoop() {
-	p.getChannels()
+func (db *DoubanFM) init() {
+	db.gst.init(db.onMessage)
+	db.GetChannels()
+	db.Channel = 2
+	db.GetSongs(doubanfm.New)
+	db.gst.NewSource(db.Next().Url)
+}
+
+func (db *DoubanFM) Run() {
+	db.init()
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Println("Type h for help!")
 
 	for {
-		cmd := <-p.cmdChan
-		//log.Println("cmd:", cmd)
-		switch cmd {
-		case CmdStop:
-			p.gst.Stop()
-			p.paused = true
-		case CmdPlay:
-			if p.paused {
-				p.gst.Play()
-			} else {
-				p.gst.Pause()
-			}
-			p.paused = !p.paused
-		case CmdNext:
-			p.gst.NewSource(p.next().Url)
-			if len(p.playlist) == 0 {
-				p.newPlaylist(OpLast)
-			}
-		case CmdLoop:
-			p.loop = !p.loop
-		case CmdSkip:
-			p.newPlaylist(OpSkip)
-			p.gst.NewSource(p.next().Url)
-		case CmdLike:
-			p.newPlaylist(OpLike)
-			p.playing.Like = 1
-		case CmdUnlike:
-			p.newPlaylist(OpUnlike)
-			p.playing.Like = 0
-		case CmdTrash:
-			p.newPlaylist(OpBypass)
-			p.gst.NewSource(p.next().Url)
-		default:
-			if cmd <= len(p.channels) {
-				p.channel = cmd
-				p.newPlaylist(OpNew)
-				p.gst.NewSource(p.next().Url)
-			}
+		fmt.Print("gofm> ")
+		op, _ := reader.ReadString('\n')
+		op = strings.ToLower(strings.TrimSpace(op))
+		if op == "" {
+			continue
 		}
-
-		for {
-			if len(p.playlist) == 0 {
-				p.newPlaylist(OpLast)
+		switch op {
+		case OpPlay:
+			db.Paused = !db.Paused
+			if db.Paused {
+				db.gst.Pause()
+			} else {
+				db.gst.Play()
+			}
+		case OpLoop:
+			db.Loop = !db.Loop
+		case OpNext:
+			if db.Empty() {
+				db.GetSongs(doubanfm.Last)
+			}
+			db.gst.NewSource(db.Next().Url)
+		case OpSkip:
+			db.GetSongs(doubanfm.Skip)
+			db.gst.NewSource(db.Next().Url)
+		case OpTrash:
+			db.GetSongs(doubanfm.Bypass)
+			db.gst.NewSource(db.Next().Url)
+		case OpLike:
+			db.GetSongs(doubanfm.Like)
+			db.Song.Like = 1
+		case OpUnlike:
+			db.GetSongs(doubanfm.Unlike)
+			db.Song.Like = 0
+		case OpLogin:
+			if db.User != nil {
+				db.printUser()
 				continue
 			}
-			break
+			db.Login()
+
+			if db.User == nil {
+				fmt.Println("Login Failed")
+				continue
+			}
+			chls := []Channel{
+				{Id: "-3", Name: "红星兆赫"},
+			}
+			chls = append(chls, db.Channels...)
+			db.Channels = chls
+			db.GetLoginChannels()
+		case OpList:
+			db.printPlaylist()
+		case OpSong:
+			db.printSong()
+		case OpExit:
+			fmt.Println("Bye!")
+			os.Exit(0)
+		case OpHelp:
+			fallthrough
+		default:
+			chl, err := strconv.Atoi(op)
+			if err != nil {
+				help()
+				continue
+			}
+			if chl == 0 {
+				db.printChannels()
+				continue
+			}
+			if chl > 0 && chl <= len(db.Channels) {
+				db.Channel = chl
+			}
+			db.GetSongs(doubanfm.New)
+			db.gst.NewSource(db.Next().Url)
 		}
 	}
 }
 
-func (p *doubanFM) next() song {
-	if len(p.playlist) > 0 {
-		p.playing = p.playlist[0]
-		p.playlist = p.playlist[1:]
-		return p.playing
-	}
-	return song{}
-}
-
-func (p *doubanFM) getChannels() int {
-	resp, err := p.get("http://www.douban.com/j/app/radio/channels")
+func (db *DoubanFM) GetChannels() {
+	chls, err := doubanfm.Channels()
 	if err != nil {
 		log.Println(err)
-		return 0
 	}
-
-	var r struct {
-		Channels []channel `json:"channels"`
+	var ch []Channel
+	for _, chl := range chls {
+		ch = append(ch, toChannel(chl))
 	}
-
-	if err := json.NewDecoder(resp).Decode(&r); err != nil {
-		log.Println(err)
-	}
-
-	if len(r.Channels) > 0 {
-		p.channels = r.Channels
-	}
-
-	return len(r.Channels)
+	db.Channels = ch
 }
 
-func (p *doubanFM) getLoginChls() {
-	resp, err := p.get("http://douban.fm/j/explore/get_login_chls?uk=" + p.user.Id)
-	if err != nil {
+func (db *DoubanFM) GetLoginChannels() {
+	if db.User == nil {
 		return
 	}
-	var r struct {
-		Data struct {
-			Res struct {
-				Favs []struct {
-					Intro string
-					Name  string
-					Id    int
-					Hot   []string `json:"hot_songs"`
-				} `json:"fav_chls"`
-				Recommends []struct {
-					Intro string
-					Name  string
-					Id    int
-					Hot   []string `json:"hot_songs"`
-				} `json:"rec_chls"`
+	favs, recs, err := doubanfm.LoginChannels(db.User.Id)
+	if err != nil {
+		log.Println(err)
+	}
+
+	for _, fav := range favs {
+		find := false
+		for i, chl := range db.Channels {
+			if chl.Id == fav.Id.String() {
+				db.Channels[i].Fav = true
+				find = true
 			}
 		}
-	}
-
-	if err := json.NewDecoder(resp).Decode(&r); err != nil {
-		return
-	}
-
-	for _, fav := range r.Data.Res.Favs {
-		p.channels = append(p.channels,
-			channel{Id: fav.Id, Name: fav.Name, Intro: fav.Intro})
-	}
-	for _, rec := range r.Data.Res.Recommends {
-		p.channels = append(p.channels,
-			channel{Id: rec.Id, Name: rec.Name, Intro: rec.Intro})
-	}
-
-}
-
-func (p *doubanFM) newPlaylist(op string) int {
-	v := url.Values{}
-	v.Add("app_name", appName)
-	v.Add("version", "100")
-	v.Add("token", p.user.Token)
-	v.Add("expire", p.user.Expire)
-	v.Add("user_id", p.user.Id)
-	v.Add("kbps", "192")
-	v.Add("type", op)
-	v.Add("channel", p.channels[p.channel-1].ChannelId())
-	v.Add("sid", p.playing.Sid)
-	//v.Add("from", "mainsite")
-	//v.Add("pt", strconv.Itoa(p.playing.Length))
-	//ra := rand.Int63()%0xF000000000 + 0x1000000000
-	//v.Add("r", fmt.Sprintf("%x", ra))
-	v.Add("preventCache", strconv.FormatFloat(rand.Float64(), 'f', 16, 64))
-
-	resp, err := p.get("http://www.douban.com/j/app/radio/people?" + v.Encode())
-	if err != nil {
-		log.Println(err)
-		return 0
-	}
-
-	var r struct {
-		R          int
-		QuickStart int `json:"is_show_quick_start"`
-		Song       []song
-		Err        string
-	}
-
-	if err := json.NewDecoder(resp).Decode(&r); err != nil {
-		log.Println(err)
-	}
-
-	if len(r.Song) > 0 {
-		p.playlist = r.Song
-	}
-
-	return len(r.Song)
-}
-
-func (fm *doubanFM) get(url string) (io.Reader, error) {
-	//fmt.Println(url)
-	r, err := fm.request("GET", url, "", nil)
-	if err != nil {
-		return nil, err
-	}
-	defer r.Body.Close()
-
-	b := &bytes.Buffer{}
-	_, err = io.Copy(b, r.Body)
-
-	return b, err
-}
-
-func (fm *doubanFM) post(url, bodyType string, body io.Reader) (io.Reader, error) {
-	r, err := fm.request("POST", url, bodyType, body)
-	if err != nil {
-		return nil, err
-	}
-	defer r.Body.Close()
-
-	b := &bytes.Buffer{}
-	_, err = io.Copy(b, r.Body)
-
-	return b, err
-}
-
-func (_ *doubanFM) request(method, url string, bodyType string, body io.Reader) (*http.Response, error) {
-	r, err := http.NewRequest(method, url, body)
-	if err != nil {
-		return nil, err
-	}
-	r.Header.Set("Content-Type", bodyType)
-	r.AddCookie(&http.Cookie{Name: "bid", Value: "8UK9DSCWDws"})
-	proxy := os.Getenv("http_proxy")
-	if len(proxy) == 0 {
-		return http.DefaultClient.Do(r)
-	}
-
-	addr, err := net.ResolveTCPAddr("tcp", proxy)
-	if err != nil {
-		return nil, err
-	}
-	conn, err := net.DialTCP("tcp", nil, addr)
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
-
-	if err := r.WriteProxy(conn); err != nil {
-		return nil, err
-	}
-
-	data, err := ioutil.ReadAll(conn)
-	if err != nil {
-		return nil, err
-	}
-	return http.ReadResponse(bufio.NewReader(bytes.NewBuffer(data)), r)
-}
-
-func (fm *doubanFM) Current() string {
-	return fm.playing.String()
-}
-
-func (fm *doubanFM) Playlist() string {
-	buffer := &bytes.Buffer{}
-
-	if len(fm.playing.Sid) > 0 {
-		fmt.Fprintf(buffer, "%s + %s (%s)\n",
-			fm.playing.Title, fm.playing.Artist, fm.playing.PubTime)
-	}
-	for _, song := range fm.playlist {
-		fmt.Fprintf(buffer, "%s - %s (%s)\n",
-			song.Title, song.Artist, song.PubTime)
-	}
-	return buffer.String()
-}
-
-func (fm *doubanFM) Channels() string {
-	buffer := &bytes.Buffer{}
-	for i, ch := range fm.channels {
-		if i+1 == fm.channel {
-			fmt.Fprintf(buffer, "%2d + %s %s\n", i+1, ch.Name, ch.Intro)
-		} else {
-			fmt.Fprintf(buffer, "%2d - %s %s\n", i+1, ch.Name, ch.Intro)
+		if !find {
+			db.Channels = append(db.Channels, toChannelLogin(fav))
 		}
 	}
-	return buffer.String()
+	for _, rec := range recs {
+		db.Channels = append(db.Channels, toChannelLogin(rec))
+	}
 }
 
-func (fm *doubanFM) userInfo() string {
-	return fmt.Sprintf("%s \t%s", fm.user.Id, fm.user.Name)
+func toChannel(chl doubanfm.Channel) Channel {
+	return Channel{
+		Id:   chl.Id.String(),
+		Name: chl.Name,
+	}
 }
 
-func (fm *doubanFM) Login() {
-	var id, pwd string
+func toChannelLogin(chl doubanfm.LoginChannel) Channel {
+	return Channel{
+		Id:   chl.Id.String(),
+		Name: chl.Name,
+	}
+}
 
-	if len(fm.user.Id) > 0 {
-		fmt.Println(fm.userInfo())
+func (db *DoubanFM) GetSongs(types string) {
+	chl := db.Channels[db.Channel-1].Id
+	songs, err := doubanfm.Songs(types, chl, db.Song.Sid, db.User)
+	if err != nil {
+		log.Println(err)
 		return
 	}
+
+	var ss []Song
+	for _, song := range songs {
+		ss = append(ss, toSong(song))
+	}
+
+	if len(ss) > 0 {
+		db.Songs = ss
+	}
+}
+
+func toSong(song doubanfm.Song) Song {
+	return Song{
+		Sid:        song.Sid,
+		Artist:     song.Artist,
+		Title:      song.Title,
+		Album:      song.Album,
+		AlbumTitle: song.AlbumTitle,
+		PubTime:    song.PubTime,
+		Company:    song.Company,
+		Length:     song.Length,
+		Kbps:       song.Kbps,
+		Url:        song.Url,
+		Like:       song.Like,
+	}
+}
+
+func (db *DoubanFM) Login() {
+	var id, pwd string
 
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Print("Douban ID: ")
 		id, _ = reader.ReadString('\n')
-		id = strings.Trim(id, " \t\n")
-		if len(id) > 0 {
+		id = strings.TrimSpace(id)
+		if id != "" {
 			break
 		}
 	}
@@ -459,97 +324,98 @@ func (fm *doubanFM) Login() {
 		fmt.Print("Password: ")
 		pwd, _ = reader.ReadString('\n')
 		pwd = strings.TrimRight(pwd, "\n")
-		if len(pwd) > 0 {
+		if pwd != "" {
 			break
 		}
 	}
 
-	/*
-		cid, err := fm.newCaptcha()
-		if err != nil {
-			log.Println(err)
-			return
+	db.User, _ = doubanfm.Login(id, pwd)
+}
+
+func (db *DoubanFM) printChannels() {
+	b := &bytes.Buffer{}
+	for i, chl := range db.Channels {
+		cur := "-"
+		fav := ""
+		if i == db.Channel-1 {
+			cur = "+"
 		}
-
-		dir, _ := os.Getwd()
-		fmt.Println("Captcha image saved at", dir+"/"+captchaFile)
-		for {
-			fmt.Print("Captcha: ")
-			captcha, _ = reader.ReadString('\n')
-			captcha = strings.Trim(captcha, " \t\n")
-			if len(captcha) > 0 {
-				break
-			}
+		if chl.Fav {
+			fav = "*"
 		}
-	*/
+		fmt.Fprintf(b, "%2d %s %s %s\n", i+1, cur, chl.Name, fav)
+	}
+	fmt.Println(b)
+}
 
-	fm.login(id, pwd)
-
-	if len(fm.user.Id) > 0 {
-		channels := []channel{
-			{Id: -3, Name: "红星兆赫", Intro: ""},
+func (db *DoubanFM) printPlaylist() {
+	b := &bytes.Buffer{}
+	if db.Song.Sid != "" {
+		loop := "-"
+		if db.Loop {
+			loop = "*"
 		}
-		channels = append(channels, fm.channels...)
-		fm.channels = channels
+		fmt.Fprintf(b, "%s %s %s\n",
+			db.Song.Title, loop, db.Song.Artist)
+	}
+	for _, song := range db.Songs {
+		fmt.Fprintf(b, "%s - %s\n",
+			song.Title, song.Artist)
+	}
+	fmt.Println(b)
+}
 
-		fm.getLoginChls()
+func (db *DoubanFM) printSong() {
+	fmt.Println(db.Song)
+}
+
+func (db *DoubanFM) printUser() {
+	if db.User == nil {
+		fmt.Println("Not Login")
+		return
+	}
+	b := new(bytes.Buffer)
+	fmt.Fprintf(b, "Id: %s\n", db.User.Id)
+	fmt.Fprintf(b, "Email: %s\n", db.User.Email)
+	fmt.Fprintf(b, "Name: %s\n", db.User.Name)
+	fmt.Println(b)
+}
+
+type gstreamer struct {
+	mainloop *glib.MainLoop
+	pipe     *gst.Element
+}
+
+func newGstreamer() *gstreamer {
+	return &gstreamer{
+		mainloop: glib.NewMainLoop(nil),
+		pipe:     gst.ElementFactoryMake("playbin", "mp3_pipe"),
 	}
 }
 
-func (fm *doubanFM) login(id, password string) {
-	log.Println(id, password)
-	formdata := &bytes.Buffer{}
+func (g *gstreamer) init(onMessage func(*gst.Bus, *gst.Message)) {
+	bus := g.pipe.GetBus()
+	bus.AddSignalWatch()
+	bus.Connect("message", onMessage, nil)
 
-	w := multipart.NewWriter(formdata)
-	w.WriteField("app_name", "radio_desktop_win")
-	w.WriteField("version", "100")
-	w.WriteField("email", id)
-	w.WriteField("password", password)
-	defer w.Close()
+	go g.mainloop.Run()
 
-	resp, err := fm.post("http://www.douban.com/j/app/login",
-		w.FormDataContentType(), formdata)
-	if err != nil {
-		return
-	}
-	if err = json.NewDecoder(resp).Decode(&fm.user); err != nil {
-		return
-	}
 }
 
-func (fm *doubanFM) newCaptcha() (id string, err error) {
-	r, err := fm.get("http://douban.fm/j/new_captcha")
-	if err != nil {
-		return
-	}
+func (g *gstreamer) Stop() {
+	g.pipe.SetState(gst.STATE_NULL)
+}
 
-	err = json.NewDecoder(r).Decode(&id)
-	if err != nil {
-		return
-	}
+func (g *gstreamer) Play() {
+	g.pipe.SetState(gst.STATE_PLAYING)
+}
 
-	v := url.Values{}
-	v.Add("size", "m")
-	v.Add("id", id)
-	r, err = fm.get("http://douban.fm/misc/captcha?" + v.Encode())
-	if err != nil {
-		return
-	}
+func (g *gstreamer) Pause() {
+	g.pipe.SetState(gst.STATE_PAUSED)
+}
 
-	captcha, err := jpeg.Decode(r)
-	if err != nil {
-		return
-	}
-
-	file, err := os.Create(captchaFile)
-	if err != nil {
-		return
-	}
-	defer file.Close()
-
-	if err = jpeg.Encode(file, captcha, nil); err != nil {
-		return
-	}
-
-	return
+func (g *gstreamer) NewSource(uri string) {
+	g.Stop()
+	g.pipe.SetProperty("uri", uri)
+	g.Play()
 }
